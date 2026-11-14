@@ -1,0 +1,861 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>O2O Operations Real-Time Diagnostic Tool</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Google Fonts: Prompt -->
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body { font-family: 'Prompt', sans-serif; }
+    input[type=number]::-webkit-inner-spin-button, 
+    input[type=number]::-webkit-outer-spin-button { opacity: 1; }
+    @media print {
+      body * { visibility: hidden; }
+      #printableReport, #printableReport * { visibility: visible; }
+      #printableReport { position: absolute; left: 0; top: 0; width: 100%; margin: 0; padding: 20px; }
+      .no-print { display: none !important; }
+    }
+  </style>
+</head>
+<body class="bg-slate-100 text-slate-800 min-h-screen pb-16">
+
+  <!-- Header -->
+  <header class="bg-slate-900 text-white sticky top-0 z-40 shadow-md">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-4 flex flex-wrap justify-between items-center gap-4">
+      <div class="flex items-center gap-3">
+        <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center font-bold text-xl shadow-inner">O2O</div>
+        <div>
+          <h1 class="text-lg font-bold leading-tight">O2O Operations Diagnostic & Control Center</h1>
+          <p class="text-xs text-slate-400">ระบบคำนวณ KPI วิเคราะห์จุดเกิดปัญหา 5 ขั้นตอน และสร้างรายงานมินิเคส</p>
+        </div>
+      </div>
+      <div class="flex items-center gap-2.5">
+        <button onclick="openReportModal()" class="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-lg transition shadow-md flex items-center gap-2 cursor-pointer">
+          <span>📄</span> ออกรายงานสรุปมินิเคส
+        </button>
+        <button onclick="loadCaseStudyData()" class="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg transition shadow cursor-pointer">
+          โหลดข้อมูล Mini Case
+        </button>
+        <button onclick="resetInputs()" class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-xs text-slate-300 rounded-lg border border-slate-700 transition cursor-pointer">
+          ล้างข้อมูล
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- Timestamp Bar -->
+  <div class="bg-slate-800 text-slate-300 border-b border-slate-700 py-2 px-4 sm:px-6 text-xs">
+    <div class="max-w-7xl mx-auto flex flex-wrap justify-between items-center gap-2">
+      <div class="flex items-center gap-2">
+        <span class="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+        <span>เวลาบันทึกข้อมูลล่าสุด: <strong id="liveTimestamp" class="text-white">-</strong></span>
+      </div>
+      <div class="text-slate-400">สถานะ: พร้อมออกรายงาน (Active)</div>
+    </div>
+  </div>
+
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 mt-6 space-y-8">
+
+    <!-- SECTION 1: INPUT BOXES -->
+    <section class="space-y-4">
+      <h2 class="text-base font-bold text-slate-900 flex items-center gap-2">
+        <span class="w-2.5 h-2.5 bg-indigo-600 rounded-full"></span> 1. ระบุข้อมูลหน้างานเพื่อคำนวณ (Operations Input Data)
+      </h2>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+        <!-- Box 1 -->
+        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+          <span class="text-xs font-bold text-indigo-600 uppercase">BOX 1 • ปริมาณงาน</span>
+          <h3 class="text-sm font-bold text-slate-900">ออเดอร์ที่ได้รับ และ งานที่สำเร็จ</h3>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Orders Received (ออเดอร์ทั้งหมด)</label>
+            <input type="number" min="0" id="in_ordersReceived" value="200" oninput="calculateAll()" class="w-full px-3 py-2 border rounded-lg text-sm">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Orders Completed (แพ็กเสร็จพร้อมส่ง)</label>
+            <input type="number" min="0" id="in_ordersCompleted" value="176" oninput="calculateAll()" class="w-full px-3 py-2 border rounded-lg text-sm">
+            <span class="text-[10px] text-slate-400">งานค้าง = <span id="lbl_backlog">24</span> ออเดอร์</span>
+          </div>
+        </div>
+
+        <!-- Box 2 -->
+        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+          <span class="text-xs font-bold text-indigo-600 uppercase">BOX 2 • การส่งมอบ</span>
+          <h3 class="text-sm font-bold text-slate-900">การจัดส่งตรงเวลาและครบถ้วน</h3>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Target OTIF Orders (เป้าหมายตามแผน)</label>
+            <input type="number" min="0" id="in_targetOtif" value="190" oninput="calculateAll()" class="w-full px-3 py-2 border rounded-lg text-sm">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Actual OTIF Orders (ส่งตรงเวลาครบจริง)</label>
+            <input type="number" min="0" id="in_actualOtif" value="158" oninput="calculateAll()" class="w-full px-3 py-2 border rounded-lg text-sm">
+            <span class="text-[10px] text-slate-400">หลุดเป้า = <span id="lbl_otifGap">32</span> ออเดอร์</span>
+          </div>
+        </div>
+
+        <!-- Box 3 -->
+        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+          <span class="text-xs font-bold text-indigo-600 uppercase">BOX 3 • ความผิดพลาด</span>
+          <h3 class="text-sm font-bold text-slate-900">ข้อผิดพลาดในการทำงาน (Defects)</h3>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Max Allowed Errors (เกณฑ์ยอมรับ)</label>
+            <input type="number" min="0" id="in_targetErrors" value="4" oninput="calculateAll()" class="w-full px-3 py-2 border rounded-lg text-sm">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">Actual Errors (ออเดอร์ที่ผิดพลาดจริง)</label>
+            <input type="number" min="0" id="in_actualErrors" value="8" oninput="calculateAll()" class="w-full px-3 py-2 border rounded-lg text-sm">
+          </div>
+        </div>
+
+        <!-- Box 4 -->
+        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3">
+          <span class="text-xs font-bold text-indigo-600 uppercase">BOX 4 • ข้อร้องเรียนลูกค้า</span>
+          <h3 class="text-sm font-bold text-slate-900">B2B Complaints & Key Accounts</h3>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">เป้าคุม</label>
+              <input type="number" min="0" id="in_targetComplaints" value="3" oninput="calculateAll()" class="w-full px-3 py-2 border rounded-lg text-sm">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">ผลจริง</label>
+              <input type="number" min="0" id="in_actualComplaints" value="12" oninput="calculateAll()" class="w-full px-3 py-2 border rounded-lg text-sm">
+            </div>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 mb-1">กระทบลูกค้ารายสำคัญ (Key Accounts)</label>
+            <input type="number" min="0" id="in_keyAccountComplaints" value="3" oninput="calculateAll()" class="w-full px-3 py-2 border rounded-lg text-sm">
+          </div>
+        </div>
+
+        <!-- Box 5 -->
+        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm space-y-3 md:col-span-2">
+          <span class="text-xs font-bold text-indigo-600 uppercase">BOX 5 • กำลังคนและเวลาวิกฤต</span>
+          <h3 class="text-sm font-bold text-slate-900">กำลังคนช่วง Peak Time</h3>
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">กำลังคนที่วางแผนไว้</label>
+              <input type="number" min="0" id="in_targetStaff" value="10" oninput="calculateAll()" class="w-full px-3 py-2 border rounded-lg text-sm">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">กำลังคนที่มีจริง</label>
+              <input type="number" min="0" id="in_actualStaff" value="8" oninput="calculateAll()" class="w-full px-3 py-2 border rounded-lg text-sm">
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-slate-700 mb-1">ช่วงเวลาเร่งด่วน (Peak Window)</label>
+              <div class="flex items-center gap-1.5">
+                <input type="text" id="in_peakStart" value="14:00" oninput="calculateAll()" class="w-1/2 px-2 py-2 border border-indigo-300 rounded-lg text-sm font-semibold text-center">
+                <span>-</span>
+                <input type="text" id="in_peakEnd" value="17:00" oninput="calculateAll()" class="w-1/2 px-2 py-2 border border-indigo-300 rounded-lg text-sm font-semibold text-center">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 2: PROCESS BOTTLENECK DIAGNOSTIC TOOL -->
+    <section class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm space-y-5">
+      <div class="flex flex-wrap justify-between items-center gap-2">
+        <div>
+          <h2 class="text-base font-bold text-slate-900 flex items-center gap-2">
+            <span class="w-2.5 h-2.5 bg-purple-600 rounded-full"></span> 2. เครื่องมือวินิจฉัยจุดเกิดปัญหาตลอดกระบวนการ (Process Bottleneck Diagnostic)
+          </h2>
+          <p class="text-xs text-slate-500">ติ๊กเลือกปัญหาที่ตรวจพบหน้างาน เพื่อชี้เป้าขั้นตอนที่มีข้อผิดพลาด</p>
+        </div>
+        <div id="badge_primaryBottleneck" class="text-xs px-3 py-1 bg-purple-100 text-purple-800 border border-purple-200 rounded-full font-bold">
+          ขั้นตอนคอขวดหลัก: 2. Pick (หยิบ)
+        </div>
+      </div>
+
+      <!-- 5 Stages Grid -->
+      <div class="grid grid-cols-1 sm:grid-cols-5 gap-3">
+        <!-- Step 1 -->
+        <div id="card_step1" class="p-4 rounded-xl border border-slate-200 bg-slate-50 flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Step 1</span>
+              <span id="cnt_step1" class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-600">0</span>
+            </div>
+            <h3 class="text-sm font-bold text-slate-900 mt-1">1. Order Entry</h3>
+            <div class="mt-3 space-y-2">
+              <label class="flex items-start gap-2 text-xs text-slate-700 cursor-pointer">
+                <input type="checkbox" id="chk_ord1" onchange="calculateAll()" class="mt-0.5 rounded text-indigo-600">
+                <span>ออเดอร์เข้าระบบล่าช้า/ค้าง</span>
+              </label>
+              <label class="flex items-start gap-2 text-xs text-slate-700 cursor-pointer">
+                <input type="checkbox" id="chk_ord2" onchange="calculateAll()" class="mt-0.5 rounded text-indigo-600">
+                <span>ข้อมูลที่อยู่/ใบสั่งซื้อไม่ชัดเจน</span>
+              </label>
+            </div>
+          </div>
+          <div class="mt-4 pt-2 border-t border-slate-200/60 text-[10px]" id="stat_step1">สถานะ: <strong class="text-emerald-600">ปกติ</strong></div>
+        </div>
+
+        <!-- Step 2 -->
+        <div id="card_step2" class="p-4 rounded-xl border border-red-300 bg-red-50/40 shadow-sm flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Step 2</span>
+              <span id="cnt_step2" class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-500 text-white">2</span>
+            </div>
+            <h3 class="text-sm font-bold text-slate-900 mt-1">2. Pick (หยิบ)</h3>
+            <div class="mt-3 space-y-2">
+              <label class="flex items-start gap-2 text-xs text-slate-700 cursor-pointer">
+                <input type="checkbox" id="chk_pic1" checked onchange="calculateAll()" class="mt-0.5 rounded text-indigo-600">
+                <span>หยิบสินค้าผิด SKU / ข้าม Location</span>
+              </label>
+              <label class="flex items-start gap-2 text-xs text-slate-700 cursor-pointer">
+                <input type="checkbox" id="chk_pic2" checked onchange="calculateAll()" class="mt-0.5 rounded text-indigo-600">
+                <span>หยิบจำนวนสินค้าไม่ครบตามใบจัด</span>
+              </label>
+              <label class="flex items-start gap-2 text-xs text-slate-700 cursor-pointer">
+                <input type="checkbox" id="chk_pic3" onchange="calculateAll()" class="mt-0.5 rounded text-indigo-600">
+                <span>สินค้าบนเชลฟ์ไม่ตรงกับสต็อก</span>
+              </label>
+            </div>
+          </div>
+          <div class="mt-4 pt-2 border-t border-slate-200/60 text-[10px]" id="stat_step2">สถานะ: <strong class="text-red-600">ตรวจพบปัญหา</strong></div>
+        </div>
+
+        <!-- Step 3 -->
+        <div id="card_step3" class="p-4 rounded-xl border border-red-300 bg-red-50/40 shadow-sm flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Step 3</span>
+              <span id="cnt_step3" class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-500 text-white">2</span>
+            </div>
+            <h3 class="text-sm font-bold text-slate-900 mt-1">3. Pack (บรรจุ)</h3>
+            <div class="mt-3 space-y-2">
+              <label class="flex items-start gap-2 text-xs text-slate-700 cursor-pointer">
+                <input type="checkbox" id="chk_pak1" checked onchange="calculateAll()" class="mt-0.5 rounded text-indigo-600">
+                <span>แพ็กของไม่ทันคนขาดช่วง Peak</span>
+              </label>
+              <label class="flex items-start gap-2 text-xs text-slate-700 cursor-pointer">
+                <input type="checkbox" id="chk_pak2" checked onchange="calculateAll()" class="mt-0.5 rounded text-indigo-600">
+                <span>ติดใบปะหน้าสลับกล่องพัสดุ</span>
+              </label>
+              <label class="flex items-start gap-2 text-xs text-slate-700 cursor-pointer">
+                <input type="checkbox" id="chk_pak3" onchange="calculateAll()" class="mt-0.5 rounded text-indigo-600">
+                <span>บรรจุภัณฑ์ชำรุดระหว่างแพ็ก</span>
+              </label>
+            </div>
+          </div>
+          <div class="mt-4 pt-2 border-t border-slate-200/60 text-[10px]" id="stat_step3">สถานะ: <strong class="text-red-600">ตรวจพบปัญหา</strong></div>
+        </div>
+
+        <!-- Step 4 -->
+        <div id="card_step4" class="p-4 rounded-xl border border-red-300 bg-red-50/40 shadow-sm flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Step 4</span>
+              <span id="cnt_step4" class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-500 text-white">1</span>
+            </div>
+            <h3 class="text-sm font-bold text-slate-900 mt-1">4. Dispatch (คัดแยก)</h3>
+            <div class="mt-3 space-y-2">
+              <label class="flex items-start gap-2 text-xs text-slate-700 cursor-pointer">
+                <input type="checkbox" id="chk_dsp1" checked onchange="calculateAll()" class="mt-0.5 rounded text-indigo-600">
+                <span>รถเข้ารับของช้ากว่า Cut-off Time</span>
+              </label>
+              <label class="flex items-start gap-2 text-xs text-slate-700 cursor-pointer">
+                <input type="checkbox" id="chk_dsp2" onchange="calculateAll()" class="mt-0.5 rounded text-indigo-600">
+                <span>คัดแยกพัสดุผิดสายรถขนส่ง</span>
+              </label>
+            </div>
+          </div>
+          <div class="mt-4 pt-2 border-t border-slate-200/60 text-[10px]" id="stat_step4">สถานะ: <strong class="text-red-600">ตรวจพบปัญหา</strong></div>
+        </div>
+
+        <!-- Step 5 -->
+        <div id="card_step5" class="p-4 rounded-xl border border-red-300 bg-red-50/40 shadow-sm flex flex-col justify-between">
+          <div>
+            <div class="flex items-center justify-between">
+              <span class="text-[11px] font-bold uppercase tracking-wider text-slate-500">Step 5</span>
+              <span id="cnt_step5" class="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-500 text-white">1</span>
+            </div>
+            <h3 class="text-sm font-bold text-slate-900 mt-1">5. Delivery (จัดส่ง)</h3>
+            <div class="mt-3 space-y-2">
+              <label class="flex items-start gap-2 text-xs text-slate-700 cursor-pointer">
+                <input type="checkbox" id="chk_dlv1" checked onchange="calculateAll()" class="mt-0.5 rounded text-indigo-600">
+                <span>ส่งล่าช้าเกิน SLA ลูกค้า B2B</span>
+              </label>
+              <label class="flex items-start gap-2 text-xs text-slate-700 cursor-pointer">
+                <input type="checkbox" id="chk_dlv2" onchange="calculateAll()" class="mt-0.5 rounded text-indigo-600">
+                <span>ไม่มีรูปถ่าย/หลักฐานยืนยัน POD</span>
+              </label>
+            </div>
+          </div>
+          <div class="mt-4 pt-2 border-t border-slate-200/60 text-[10px]" id="stat_step5">สถานะ: <strong class="text-red-600">ตรวจพบปัญหา</strong></div>
+        </div>
+      </div>
+
+      <!-- Specific Fixes Box -->
+      <div class="mt-4 p-4 rounded-xl bg-purple-50 border border-purple-200 space-y-3">
+        <div class="flex items-center justify-between">
+          <h4 class="text-xs font-bold text-purple-900 uppercase tracking-wider flex items-center gap-1.5">
+            <span>🔍</span> ผลการวินิจฉัยและข้อเสนอแนะเจาะจงตามจุดที่ติ๊ก (Specific Actionable Fixes)
+          </h4>
+          <span id="lbl_totalIssues" class="text-[11px] text-purple-700 font-semibold">พบ 6 ปัญหาที่ต้องแก้ไข</span>
+        </div>
+        <div id="container_solutions" class="grid grid-cols-1 md:grid-cols-2 gap-3"></div>
+      </div>
+    </section>
+
+    <!-- SECTION 3: REAL-TIME KPI DASHBOARD -->
+    <section class="space-y-4">
+      <h2 class="text-base font-bold text-slate-900 flex items-center gap-2">
+        <span class="w-2.5 h-2.5 bg-emerald-600 rounded-full"></span> 3. สรุปผลตัวชี้วัดและส่วนต่างเป้าหมาย (KPI Dashboard & Variance)
+      </h2>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <div class="flex justify-between items-start">
+            <span class="text-xs font-semibold text-slate-500">COMPLETION RATE</span>
+            <span id="badge_completionVar" class="text-xs font-bold px-2 py-0.5 rounded bg-red-100 text-red-700">-12.00%</span>
+          </div>
+          <div id="val_completionRate" class="mt-3 text-3xl font-bold text-slate-900">88.00%</div>
+          <div class="mt-2 text-xs text-slate-600">เสร็จ <span id="lbl_completedTxt">176</span> / <span id="lbl_receivedTxt">200</span> (ค้าง <span id="lbl_backlogTxt">24</span>)</div>
+        </div>
+
+        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <div class="flex justify-between items-start">
+            <span class="text-xs font-semibold text-slate-500">OTIF RATE</span>
+            <span id="badge_otifVar" class="text-xs font-bold px-2 py-0.5 rounded bg-red-100 text-red-700">-16.00%</span>
+          </div>
+          <div id="val_otifRate" class="mt-3 text-3xl font-bold text-slate-900">79.00%</div>
+          <div class="mt-2 text-xs text-slate-600">ส่งตรงเวลาครบ <span id="lbl_actualOtifTxt">158</span> / <span id="lbl_receivedTxt2">200</span></div>
+        </div>
+
+        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <div class="flex justify-between items-start">
+            <span class="text-xs font-semibold text-slate-500">ORDER ERROR RATE</span>
+            <span id="badge_errorVar" class="text-xs font-bold px-2 py-0.5 rounded bg-red-100 text-red-700">+2.55%</span>
+          </div>
+          <div id="val_errorRate" class="mt-3 text-3xl font-bold text-red-600">4.55%</div>
+          <div class="mt-2 text-xs text-slate-600">ผิดพลาด <span id="lbl_actualErrorsTxt">8</span> / <span id="lbl_completedTxt2">176</span> กล่อง</div>
+        </div>
+
+        <div class="bg-white p-5 rounded-2xl border border-slate-200 shadow-sm">
+          <div class="flex justify-between items-start">
+            <span class="text-xs font-semibold text-slate-500">B2B COMPLAINTS</span>
+            <span id="badge_complaintSpike" class="text-xs font-bold px-2 py-0.5 rounded bg-red-100 text-red-700">+300% Spike</span>
+          </div>
+          <div class="mt-3 text-3xl font-bold text-red-600"><span id="val_actualComplaints">12</span> <span class="text-sm font-normal text-slate-500">เคส</span></div>
+          <div class="mt-2 text-xs text-slate-600">กระทบลูกค้ารายสำคัญ <span id="lbl_keyAccountTxt">3</span> ราย</div>
+        </div>
+      </div>
+
+      <div class="bg-white p-6 rounded-2xl border border-slate-200 shadow-sm">
+        <h3 class="text-sm font-bold text-slate-800 mb-2">กราฟเปรียบเทียบ KPI Plan vs Actual</h3>
+        <div class="h-52 relative">
+          <canvas id="kpiChart"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- SECTION 4: DYNAMIC 24-HOUR ACTION PLAN -->
+    <section class="space-y-4">
+      <h2 class="text-base font-bold text-slate-900 flex items-center gap-2">
+        <span class="w-2.5 h-2.5 bg-red-600 rounded-full"></span> 4. แผนปฏิบัติการแก้ปัญหาเฉพาะกรณีและจัดสรรกำลังคน (Adaptive Action Plan)
+      </h2>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <!-- Step 1 -->
+        <div class="bg-white p-5 rounded-2xl border border-red-200 shadow-sm space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-red-700">ขั้นตอนที่ 1 • ชม. 0 - 4</span>
+            <span class="text-[10px] bg-red-100 text-red-800 px-2 py-0.5 rounded font-bold">ควบคุมความเสียหาย</span>
+          </div>
+          <h4 class="text-sm font-bold text-slate-900">ระงับข้อพิพาท B2B & คัดแยกคิว</h4>
+          <ul class="text-xs text-slate-700 space-y-1.5 list-disc list-inside">
+            <li>โทรขออภัย <strong>ลูกค้ารายใหญ่ <span id="plan_keyAcc">3</span> ราย</strong> ทันที</li>
+            <li>ดึง <strong><span id="plan_backlog">24</span> งานค้าง</strong> + <strong><span id="plan_errors">8</span> งานผิดพลาด</strong> เข้าไลน์ Fast-Track</li>
+            <li>จัดตั้ง Station ตรวจเช็ก (Checker) 100% สำหรับออเดอร์แก้ไข</li>
+          </ul>
+        </div>
+
+        <!-- Step 2 -->
+        <div class="bg-white p-5 rounded-2xl border border-amber-200 shadow-sm space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-amber-700">ขั้นตอนที่ 2 • ชม. 4 - 8</span>
+            <span class="text-[10px] bg-amber-100 text-amber-800 px-2 py-0.5 rounded font-bold">ส่งด่วน Hot Shot</span>
+          </div>
+          <h4 class="text-sm font-bold text-slate-900">ปล่อยรถพิเศษ & เติมคนก่อน <span id="plan_peakStart1">14:00</span> น.</h4>
+          <ul class="text-xs text-slate-700 space-y-1.5 list-disc list-inside">
+            <li>ปล่อยรถส่งด่วนรอบพิเศษ (Hot Shot) พร้อมแจ้ง ETA Real-time</li>
+            <li><strong>เตรียมคนเสริม:</strong> โยกคนเสริม <span id="plan_staffGap">2</span> คน <u>ก่อนถึงเวลา <span id="plan_peakStart2">14:00</span> น.</u> เพื่อรับมือช่วง Peak</li>
+            <li>เคลียร์พื้นที่ในไลน์ Pack ให้พร้อมรับรอบโหลดหนัก</li>
+          </ul>
+        </div>
+
+        <!-- Step 3 -->
+        <div class="bg-white p-5 rounded-2xl border border-indigo-200 shadow-sm space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-indigo-700">ขั้นตอนที่ 3 • ชม. 8 - 14</span>
+            <span class="text-[10px] bg-indigo-100 text-indigo-800 px-2 py-0.5 rounded font-bold">ช่วง Peak & ปิดเคส</span>
+          </div>
+          <h4 class="text-sm font-bold text-slate-900">คุมเข้มช่วง <span id="plan_peakStart3">14:00</span> - <span id="plan_peakEnd1">17:00</span> น.</h4>
+          <ul class="text-xs text-slate-700 space-y-1.5 list-disc list-inside">
+            <li>มอนิเตอร์ Productivity ต่อชั่วโมงตลอดช่วง <strong><span id="plan_peakStart4">14:00</span> - <span id="plan_peakEnd2">17:00</span> น.</strong> ให้มีคนครบ <span id="plan_targetStaff">10</span> คน</li>
+            <li>ติดตามผลการส่งมอบ (POD Sign-off) ปิดเคสร้องเรียน <span id="plan_complaints">12</span> เคส</li>
+            <li>ตัดรอบส่งกะค่ำตามเวลา SLA</li>
+          </ul>
+        </div>
+
+        <!-- Step 4 -->
+        <div class="bg-white p-5 rounded-2xl border border-emerald-200 shadow-sm space-y-3">
+          <div class="flex items-center justify-between">
+            <span class="text-xs font-bold text-emerald-700">ขั้นตอนที่ 4 • ชม. 14 - 24</span>
+            <span class="text-[10px] bg-emerald-100 text-emerald-800 px-2 py-0.5 rounded font-bold">วางระบบถาวร</span>
+          </div>
+          <h4 class="text-sm font-bold text-slate-900">จัดกะ Overlap Shift & ระบบสแกน</h4>
+          <ul class="text-xs text-slate-700 space-y-1.5 list-disc list-inside">
+            <li>วางตารางกะเหลื่อมเวลา <strong>Overlap Shift</strong> ครอบคลุมช่วง <span id="plan_peakStart5">14:00</span> - <span id="plan_peakEnd3">17:00</span> น. ถาวร</li>
+            <li>บังคับใช้ระบบ <strong>Barcode Pick-to-Scan</strong> แก้ปัญหาหยิบผิด SKU</li>
+            <li>สรุปรายงาน Variance เสนอผู้บริหารเพื่อวางแผนงบประมาณ</li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- MODAL: รายงานสรุปมินิเคส -->
+  <div id="reportModal" class="hidden fixed inset-0 bg-slate-900/70 z-50 flex items-center justify-center p-4 overflow-y-auto">
+    <div class="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+      <!-- Modal Top Bar -->
+      <div class="p-4 bg-slate-900 text-white flex justify-between items-center no-print">
+        <div class="flex items-center gap-2">
+          <span class="text-lg">📄</span>
+          <span class="font-bold text-sm">รายงานสรุปผลการวิเคราะห์สถานการณ์ O2O MINI CASE</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <button onclick="window.print()" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-xs font-semibold rounded-md transition flex items-center gap-1 cursor-pointer">
+            <span>🖨️</span> พิมพ์รายงาน / บันทึกเป็น PDF
+          </button>
+          <button onclick="closeReportModal()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-xs font-semibold rounded-md transition cursor-pointer">
+            ปิด
+          </button>
+        </div>
+      </div>
+
+      <!-- Printable Area -->
+      <div id="printableReport" class="p-8 overflow-y-auto space-y-6 text-slate-800 text-sm">
+        <div class="border-b-2 border-slate-900 pb-4 flex justify-between items-start">
+          <div>
+            <h2 class="text-xl font-bold text-slate-900">O2O OPERATIONS INCIDENT & DIAGNOSTIC REPORT</h2>
+            <p class="text-xs text-slate-500 mt-0.5">รายงานสรุปผลการวิเคราะห์คอขวด ตัวชี้วัด และแผนปฏิบัติการ 24 ชั่วโมง</p>
+          </div>
+          <div class="text-right text-xs">
+            <div><strong>วันที่จัดทำ:</strong> <span id="rep_date">-</span></div>
+            <div><strong>Timestamp:</strong> <span id="rep_time">-</span></div>
+            <div><strong>สถานะ:</strong> <span class="text-red-600 font-bold">Action Required</span></div>
+          </div>
+        </div>
+
+        <!-- Report KPI Section -->
+        <div class="space-y-2">
+          <h3 class="text-xs font-bold text-indigo-900 uppercase tracking-wider bg-slate-100 p-2 rounded">
+            1. สรุปผลการคำนวณตัวชี้วัดหลักเทียบเป้าหมาย (KPI Performance Summary)
+          </h3>
+          <div class="grid grid-cols-4 gap-3 text-center">
+            <div class="p-3 border rounded-xl bg-slate-50">
+              <div class="text-[11px] text-slate-500 font-semibold">Completion Rate</div>
+              <div id="rep_completion" class="text-xl font-bold text-slate-900 mt-1">88.00%</div>
+              <div id="rep_completionVar" class="text-[10px] text-red-600">ส่วนต่าง -12.00% (เป้า 100%)</div>
+            </div>
+            <div class="p-3 border rounded-xl bg-slate-50">
+              <div class="text-[11px] text-slate-500 font-semibold">OTIF Rate</div>
+              <div id="rep_otif" class="text-xl font-bold text-slate-900 mt-1">79.00%</div>
+              <div id="rep_otifVar" class="text-[10px] text-red-600">ส่วนต่าง -16.00% (เป้า 95.0%)</div>
+            </div>
+            <div class="p-3 border rounded-xl bg-slate-50">
+              <div class="text-[11px] text-slate-500 font-semibold">Order Error Rate</div>
+              <div id="rep_error" class="text-xl font-bold text-red-600 mt-1">4.55%</div>
+              <div id="rep_errorVar" class="text-[10px] text-red-600">ส่วนต่าง +2.55% (เกณฑ์คุม &le; 2%)</div>
+            </div>
+            <div class="p-3 border rounded-xl bg-slate-50">
+              <div class="text-[11px] text-slate-500 font-semibold">B2B Complaints</div>
+              <div id="rep_complaints" class="text-xl font-bold text-red-600 mt-1">12 เคส</div>
+              <div id="rep_complaintsVar" class="text-[10px] text-red-600">พุ่งขึ้น +300% (กระทบลูกค้ารายใหญ่ 3 ราย)</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Report Root Cause -->
+        <div class="space-y-2">
+          <h3 class="text-xs font-bold text-indigo-900 uppercase tracking-wider bg-slate-100 p-2 rounded">
+            2. ผลการวินิจฉัยจุดเกิดปัญหาตลอด 5 ขั้นตอน (Bottleneck & Root Cause Analysis)
+          </h3>
+          <div class="p-3 border rounded-xl bg-slate-50 text-xs space-y-1.5">
+            <div><strong>จุดคอขวดหลัก (Primary Bottleneck):</strong> <span id="rep_bottleneck" class="font-bold text-purple-800">2. Pick (หยิบ)</span></div>
+            <div><strong>ต้นตอหน้างาน:</strong> กำลังคนลดลงเหลือ <span id="rep_actualStaff">8</span> คน (ขาดแคลน <span id="rep_staffGap">2</span> คน) ในช่วง Peak Time (<span id="rep_peak">14:00 - 17:00</span> น.) ส่งผลให้เกิดความเร่งรีบในการ Pick & Pack</div>
+            <div><strong>ข้อผิดพลาดและแนวทางแก้ไขเฉพาะจุด:</strong></div>
+            <ul id="rep_solutionsList" class="list-disc list-inside text-slate-700 pl-2 space-y-1"></ul>
+          </div>
+        </div>
+
+        <!-- Report Action Plan -->
+        <div class="space-y-2">
+          <h3 class="text-xs font-bold text-indigo-900 uppercase tracking-wider bg-slate-100 p-2 rounded">
+            3. แผนปฏิบัติการกู้คืนสถานการณ์ 24 ชั่วโมง (24-Hour Action Plan)
+          </h3>
+          <div class="grid grid-cols-2 gap-3 text-xs">
+            <div class="p-3 border border-red-200 rounded-xl bg-red-50/30">
+              <strong class="text-red-700">ชม. 0 - 4 (ควบคุมความเสียหาย):</strong>
+              <ul class="list-disc list-inside mt-1 text-slate-700 space-y-0.5">
+                <li>โทรขออภัยลูกค้ารายใหญ่ <span id="rep_keyAcc">3</span> รายทันที</li>
+                <li>ดึง <span id="rep_backlog">24</span> งานค้าง + <span id="rep_errors">8</span> งานผิดพลาดเข้า Fast-Track</li>
+                <li>ตั้ง Station Checker ตรวจสอบ 100%</li>
+              </ul>
+            </div>
+            <div class="p-3 border border-amber-200 rounded-xl bg-amber-50/30">
+              <strong class="text-amber-800">ชม. 4 - 8 (ส่งมอบรอบพิเศษ):</strong>
+              <ul class="list-disc list-inside mt-1 text-slate-700 space-y-0.5">
+                <li>ปล่อยรถส่งด่วน Hot Shot พร้อมแจ้ง ETA แบบ Real-time</li>
+                <li>โยกคนเสริม <span id="rep_staffGap2">2</span> คน ก่อนเวลา <span id="rep_peakStart">14:00</span> น.</li>
+              </ul>
+            </div>
+            <div class="p-3 border border-indigo-200 rounded-xl bg-indigo-50/30">
+              <strong class="text-indigo-800">ชม. 8 - 14 (คุมช่วง Peak & ปิดเคส):</strong>
+              <ul class="list-disc list-inside mt-1 text-slate-700 space-y-0.5">
+                <li>คุมเข้มคนให้ครบ <span id="rep_targetStaff">10</span> คนตลอดช่วง <span id="rep_peakRange">14:00 - 17:00</span> น.</li>
+                <li>ติดตามผลเซ็นรับมอบ (POD) ปิดเคส <span id="rep_complaints2">12</span> คำร้องเรียน</li>
+              </ul>
+            </div>
+            <div class="p-3 border border-emerald-200 rounded-xl bg-emerald-50/30">
+              <strong class="text-emerald-800">ชม. 14 - 24 (ป้องกันระยะยาว):</strong>
+              <ul class="list-disc list-inside mt-1 text-slate-700 space-y-0.5">
+                <li>จัดกะ Overlap Shift เสริมช่วง <span id="rep_peakRange2">14:00 - 17:00</span> น. ถาวร</li>
+                <li>ติดตั้งระบบ Barcode Pick-to-Scan กันหยิบผิด SKU</li>
+              </ul>
+            </div>
+          </div>
+        </div>
+
+        <div class="pt-6 border-t border-slate-200 flex justify-between items-end text-xs text-slate-500">
+          <div>
+            <div>ระบบ: O2O Incident Diagnostic Auto-Generator</div>
+            <div>บันทึกโดย: หัวหน้างานปฏิบัติการคลังสินค้าและจัดส่ง</div>
+          </div>
+          <div class="text-center">
+            <div class="w-40 border-b border-slate-400 mb-1"></div>
+            <div>ผู้รับรองรายงาน / ผู้จัดการฝ่ายปฏิบัติการ</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pure JavaScript -->
+  <script>
+    const solutionDict = {
+      chk_ord1: { stage: '1. Order Entry', title: 'ออเดอร์เข้าระบบล่าช้า/ค้าง', solution: 'ตรวจสอบ API เชื่อมต่อระบบ และตั้ง Auto-Sync ออเดอร์ทุก 5 นาที' },
+      chk_ord2: { stage: '1. Order Entry', title: 'ข้อมูลที่อยู่/ใบสั่งซื้อไม่ชัดเจน', solution: 'เพิ่มระบบ Validation ตรวจสอบความถูกต้องของที่อยู่และเบอร์ติดต่อก่อนปล่อยออเดอร์' },
+      chk_pic1: { stage: '2. Pick (หยิบ)', title: 'หยิบสินค้าผิด SKU / ข้าม Location', solution: 'นำระบบ Barcode Pick-to-Scan มาบังคับสแกน SKU และ Shelf Location ก่อนหยิบลงตะกร้า' },
+      chk_pic2: { stage: '2. Pick (หยิบ)', title: 'หยิบจำนวนสินค้าไม่ครบตามใบจัด', solution: 'ติดตั้ง Digital Counting Scale หรือระบบเช็กน้ำหนักอัตโนมัติตอนหยิบ' },
+      chk_pic3: { stage: '2. Pick (หยิบ)', title: 'สินค้าบนเชลฟ์ไม่ตรงกับสต็อก', solution: 'ทำ Cycle Count สุ่มตรวจนับสต็อกหน้าเชลฟ์ทุกเช้าก่อนเริ่มกะ' },
+      chk_pak1: { stage: '3. Pack (บรรจุ)', title: 'แพ็กของไม่ทันคนขาดช่วง Peak', solution: 'จัดตารางกะ Overlap Shift ดึงคนมาช่วยแพ็กช่วง Peak ให้ครบกำลังคนที่ต้องการ' },
+      chk_pak2: { stage: '3. Pack (บรรจุ)', title: 'ติดใบปะหน้าสลับกล่องพัสดุ', solution: 'ใช้ระบบ Scan-to-Print พิมพ์ใบปะหน้าทีละกล่องหลังสแกนสินค้าเสร็จ ห้ามพิมพ์ล่วงหน้า' },
+      chk_pak3: { stage: '3. Pack (บรรจุ)', title: 'บรรจุภัณฑ์ชำรุดระหว่างแพ็ก', solution: 'ปรับปรุง SOP การเลือกขนาดกล่องและเพิ่มวัสดุกันกระแทกตามมาตรฐาน' },
+      chk_dsp1: { stage: '4. Dispatch (คัดแยก)', title: 'รถเข้ารับของช้ากว่า Cut-off Time', solution: 'จัดรถเสริมสำรอง (Hot Shot) และประสานงาน 3PL ล่วงหน้า 2 ชม. ก่อนเวลารถตัดรอบ' },
+      chk_dsp2: { stage: '4. Dispatch (คัดแยก)', title: 'คัดแยกพัสดุผิดสายรถขนส่ง', solution: 'ติดป้ายสีจำแนก Zone ขนส่งที่จุดพักพาเลท (Color-coded Staging Area)' },
+      chk_dlv1: { stage: '5. Delivery (จัดส่ง)', title: 'ส่งล่าช้าเกิน SLA ลูกค้า B2B', solution: 'โทรประสานงานลูกค้ารายใหญ่เพื่อแจ้ง ETA รถวิ่งจริงแบบ Real-time และทำ Fast-Track' },
+      chk_dlv2: { stage: '5. Delivery (จัดส่ง)', title: 'ไม่มีรูปถ่าย/หลักฐานยืนยัน POD', solution: 'บังคับให้คนขับถ่ายรูป Proof of Delivery (POD) พร้อมลายเซ็นส่งเข้าระบบทันที' }
+    };
+
+    let chartInstance = null;
+
+    function getVal(id) {
+      return parseFloat(document.getElementById(id).value) || 0;
+    }
+
+    function getText(id) {
+      return document.getElementById(id).value || '';
+    }
+
+    function updateLiveClock() {
+      const now = new Date();
+      const dateStr = now.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
+      const timeStr = now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      document.getElementById('liveTimestamp').innerText = `${dateStr} เวลา ${timeStr} น.`;
+    }
+
+    function calculateAll() {
+      updateLiveClock();
+
+      // Read values
+      const ordersReceived = getVal('in_ordersReceived');
+      const ordersCompleted = getVal('in_ordersCompleted');
+      const targetOtif = getVal('in_targetOtif');
+      const actualOtif = getVal('in_actualOtif');
+      const targetErrors = getVal('in_targetErrors');
+      const actualErrors = getVal('in_actualErrors');
+      const targetComplaints = getVal('in_targetComplaints');
+      const actualComplaints = getVal('in_actualComplaints');
+      const keyAccountComplaints = getVal('in_keyAccountComplaints');
+      const targetStaff = getVal('in_targetStaff');
+      const actualStaff = getVal('in_actualStaff');
+      const peakStart = getText('in_peakStart');
+      const peakEnd = getText('in_peakEnd');
+
+      // Math
+      const backlog = Math.max(0, ordersReceived - ordersCompleted);
+      const otifGap = Math.max(0, targetOtif - actualOtif);
+      const staffGap = Math.max(0, targetStaff - actualStaff);
+
+      const completionRate = ordersReceived > 0 ? (ordersCompleted / ordersReceived) * 100 : 0;
+      const targetOtifPercent = ordersReceived > 0 ? (targetOtif / ordersReceived) * 100 : 95;
+      const otifRate = ordersReceived > 0 ? (actualOtif / ordersReceived) * 100 : 0;
+      const errorRate = ordersCompleted > 0 ? (actualErrors / ordersCompleted) * 100 : 0;
+
+      const completionVar = completionRate - 100;
+      const otifVar = otifRate - targetOtifPercent;
+      const errorVar = errorRate - 2.0;
+      const complaintSpike = targetComplaints > 0 ? Math.round(((actualComplaints - targetComplaints) / targetComplaints) * 100) : 0;
+
+      // Update Input Labels
+      document.getElementById('lbl_backlog').innerText = backlog;
+      document.getElementById('lbl_otifGap').innerText = otifGap;
+
+      // Update KPI Section
+      document.getElementById('val_completionRate').innerText = completionRate.toFixed(2) + '%';
+      document.getElementById('lbl_completedTxt').innerText = ordersCompleted;
+      document.getElementById('lbl_receivedTxt').innerText = ordersReceived;
+      document.getElementById('lbl_backlogTxt').innerText = backlog;
+      document.getElementById('badge_completionVar').innerText = (completionVar >= 0 ? '+' : '') + completionVar.toFixed(2) + '%';
+      document.getElementById('badge_completionVar').className = `text-xs font-bold px-2 py-0.5 rounded ${completionVar >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`;
+
+      document.getElementById('val_otifRate').innerText = otifRate.toFixed(2) + '%';
+      document.getElementById('lbl_actualOtifTxt').innerText = actualOtif;
+      document.getElementById('lbl_receivedTxt2').innerText = ordersReceived;
+      document.getElementById('badge_otifVar').innerText = (otifVar >= 0 ? '+' : '') + otifVar.toFixed(2) + '%';
+      document.getElementById('badge_otifVar').className = `text-xs font-bold px-2 py-0.5 rounded ${otifVar >= 0 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`;
+
+      document.getElementById('val_errorRate').innerText = errorRate.toFixed(2) + '%';
+      document.getElementById('lbl_actualErrorsTxt').innerText = actualErrors;
+      document.getElementById('lbl_completedTxt2').innerText = ordersCompleted;
+      document.getElementById('badge_errorVar').innerText = '+' + errorVar.toFixed(2) + '%';
+      document.getElementById('badge_errorVar').className = `text-xs font-bold px-2 py-0.5 rounded ${errorRate <= 2 ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`;
+
+      document.getElementById('val_actualComplaints').innerText = actualComplaints;
+      document.getElementById('lbl_keyAccountTxt').innerText = keyAccountComplaints;
+      document.getElementById('badge_complaintSpike').innerText = '+' + complaintSpike + '% Spike';
+
+      // Update Adaptive Action Plan
+      document.getElementById('plan_keyAcc').innerText = keyAccountComplaints;
+      document.getElementById('plan_backlog').innerText = backlog;
+      document.getElementById('plan_errors').innerText = actualErrors;
+      document.getElementById('plan_peakStart1').innerText = peakStart;
+      document.getElementById('plan_peakStart2').innerText = peakStart;
+      document.getElementById('plan_peakStart3').innerText = peakStart;
+      document.getElementById('plan_peakStart4').innerText = peakStart;
+      document.getElementById('plan_peakStart5').innerText = peakStart;
+      document.getElementById('plan_peakEnd1').innerText = peakEnd;
+      document.getElementById('plan_peakEnd2').innerText = peakEnd;
+      document.getElementById('plan_peakEnd3').innerText = peakEnd;
+      document.getElementById('plan_staffGap').innerText = staffGap;
+      document.getElementById('plan_targetStaff').innerText = targetStaff;
+      document.getElementById('plan_complaints').innerText = actualComplaints;
+
+      // Update Stages Diagnostic
+      const step1Count = (document.getElementById('chk_ord1').checked ? 1 : 0) + (document.getElementById('chk_ord2').checked ? 1 : 0);
+      const step2Count = (document.getElementById('chk_pic1').checked ? 1 : 0) + (document.getElementById('chk_pic2').checked ? 1 : 0) + (document.getElementById('chk_pic3').checked ? 1 : 0);
+      const step3Count = (document.getElementById('chk_pak1').checked ? 1 : 0) + (document.getElementById('chk_pak2').checked ? 1 : 0) + (document.getElementById('chk_pak3').checked ? 1 : 0);
+      const step4Count = (document.getElementById('chk_dsp1').checked ? 1 : 0) + (document.getElementById('chk_dsp2').checked ? 1 : 0);
+      const step5Count = (document.getElementById('chk_dlv1').checked ? 1 : 0) + (document.getElementById('chk_dlv2').checked ? 1 : 0);
+
+      updateStageUI('step1', step1Count);
+      updateStageUI('step2', step2Count);
+      updateStageUI('step3', step3Count);
+      updateStageUI('step4', step4Count);
+      updateStageUI('step5', step5Count);
+
+      const counts = [
+        { name: '1. Order Entry', count: step1Count },
+        { name: '2. Pick (หยิบ)', count: step2Count },
+        { name: '3. Pack (บรรจุ)', count: step3Count },
+        { name: '4. Dispatch (คัดแยก)', count: step4Count },
+        { name: '5. Delivery (จัดส่ง)', count: step5Count }
+      ];
+
+      counts.sort((a, b) => b.count - a.count);
+      const primaryBottleneck = counts[0].count > 0 ? counts[0].name : 'ไม่มีปัญหา';
+      document.getElementById('badge_primaryBottleneck').innerText = 'ขั้นตอนคอขวดหลัก: ' + primaryBottleneck;
+
+      // Build Solutions
+      const checkedKeys = Object.keys(solutionDict).filter(k => document.getElementById(k) && document.getElementById(k).checked);
+      document.getElementById('lbl_totalIssues').innerText = `พบ ${checkedKeys.length} ปัญหาที่ต้องแก้ไข`;
+      
+      const solContainer = document.getElementById('container_solutions');
+      if (checkedKeys.length === 0) {
+        solContainer.innerHTML = '<div class="text-xs text-purple-600 italic col-span-2">ยังไม่ได้ติ๊กเลือกปัญหา (สถานะทุกขั้นตอนเป็นปกติ)</div>';
+      } else {
+        solContainer.innerHTML = checkedKeys.map(k => {
+          const item = solutionDict[k];
+          return `
+            <div class="p-3 bg-white rounded-lg border border-purple-100 shadow-xs space-y-1">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-slate-900">${item.title}</span>
+                <span class="text-[10px] px-2 py-0.5 rounded bg-red-100 text-red-700 font-semibold">${item.stage}</span>
+              </div>
+              <p class="text-xs text-slate-600 leading-relaxed">${item.solution}</p>
+            </div>
+          `;
+        }).join('');
+      }
+
+      // Update Chart
+      updateChart(completionRate, targetOtifPercent, otifRate, errorRate);
+    }
+
+    function updateStageUI(stepId, count) {
+      const card = document.getElementById('card_' + stepId);
+      const cnt = document.getElementById('cnt_' + stepId);
+      const stat = document.getElementById('stat_' + stepId);
+
+      cnt.innerText = count;
+      if (count > 0) {
+        card.className = 'p-4 rounded-xl border border-red-300 bg-red-50/40 shadow-sm flex flex-col justify-between';
+        cnt.className = 'text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-500 text-white';
+        stat.innerHTML = 'สถานะ: <strong class="text-red-600">ตรวจพบปัญหา</strong>';
+      } else {
+        card.className = 'p-4 rounded-xl border border-slate-200 bg-slate-50 flex flex-col justify-between';
+        cnt.className = 'text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-200 text-slate-600';
+        stat.innerHTML = 'สถานะ: <strong class="text-emerald-600">ปกติ</strong>';
+      }
+    }
+
+    function updateChart(comp, targetOtif, otif, err) {
+      const ctx = document.getElementById('kpiChart');
+      if (!ctx) return;
+
+      if (!chartInstance) {
+        chartInstance = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels: ['Completion Rate (%)', 'OTIF Rate (%)', 'Error Rate (%)'],
+            datasets: [
+              { label: 'เป้าหมาย (Plan)', data: [100, targetOtif, 2.0], backgroundColor: '#94a3b8' },
+              { label: 'ผลจริง (Actual)', data: [comp, otif, err], backgroundColor: ['#4f46e5', '#ef4444', '#f59e0b'] }
+            ]
+          },
+          options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: { y: { beginAtZero: true, max: 110 } }
+          }
+        });
+      } else {
+        chartInstance.data.datasets[0].data = [100, targetOtif, 2.0];
+        chartInstance.data.datasets[1].data = [comp, otif, err];
+        chartInstance.update();
+      }
+    }
+
+    function loadCaseStudyData() {
+      document.getElementById('in_ordersReceived').value = 200;
+      document.getElementById('in_ordersCompleted').value = 176;
+      document.getElementById('in_targetOtif').value = 190;
+      document.getElementById('in_actualOtif').value = 158;
+      document.getElementById('in_targetErrors').value = 4;
+      document.getElementById('in_actualErrors').value = 8;
+      document.getElementById('in_targetComplaints').value = 3;
+      document.getElementById('in_actualComplaints').value = 12;
+      document.getElementById('in_keyAccountComplaints').value = 3;
+      document.getElementById('in_targetStaff').value = 10;
+      document.getElementById('in_actualStaff').value = 8;
+      document.getElementById('in_peakStart').value = '14:00';
+      document.getElementById('in_peakEnd').value = '17:00';
+
+      // Check default case issues
+      document.getElementById('chk_ord1').checked = false;
+      document.getElementById('chk_ord2').checked = false;
+      document.getElementById('chk_pic1').checked = true;
+      document.getElementById('chk_pic2').checked = true;
+      document.getElementById('chk_pic3').checked = false;
+      document.getElementById('chk_pak1').checked = true;
+      document.getElementById('chk_pak2').checked = true;
+      document.getElementById('chk_pak3').checked = false;
+      document.getElementById('chk_dsp1').checked = true;
+      document.getElementById('chk_dsp2').checked = false;
+      document.getElementById('chk_dlv1').checked = true;
+      document.getElementById('chk_dlv2').checked = false;
+
+      calculateAll();
+    }
+
+    function resetInputs() {
+      ['in_ordersReceived', 'in_ordersCompleted', 'in_targetOtif', 'in_actualOtif', 
+       'in_targetErrors', 'in_actualErrors', 'in_targetComplaints', 'in_actualComplaints', 
+       'in_keyAccountComplaints', 'in_targetStaff', 'in_actualStaff'].forEach(id => {
+        document.getElementById(id).value = 0;
+      });
+
+      Object.keys(solutionDict).forEach(k => {
+        if (document.getElementById(k)) document.getElementById(k).checked = false;
+      });
+
+      calculateAll();
+    }
+
+    function openReportModal() {
+      const now = new Date();
+      document.getElementById('rep_date').innerText = now.toLocaleDateString('th-TH', { year: 'numeric', month: 'long', day: 'numeric' });
+      document.getElementById('rep_time').innerText = now.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', second: '2-digit' }) + ' น.';
+
+      // Sync report texts
+      document.getElementById('rep_completion').innerText = document.getElementById('val_completionRate').innerText;
+      document.getElementById('rep_completionVar').innerText = 'ส่วนต่าง ' + document.getElementById('badge_completionVar').innerText + ' (เป้า 100%)';
+      document.getElementById('rep_otif').innerText = document.getElementById('val_otifRate').innerText;
+      document.getElementById('rep_otifVar').innerText = 'ส่วนต่าง ' + document.getElementById('badge_otifVar').innerText;
+      document.getElementById('rep_error').innerText = document.getElementById('val_errorRate').innerText;
+      document.getElementById('rep_errorVar').innerText = 'ส่วนต่าง ' + document.getElementById('badge_errorVar').innerText;
+      document.getElementById('rep_complaints').innerText = document.getElementById('val_actualComplaints').innerText + ' เคส';
+      document.getElementById('rep_complaintsVar').innerText = 'พุ่งขึ้น ' + document.getElementById('badge_complaintSpike').innerText + ' (กระทบลูกค้ารายใหญ่ ' + getVal('in_keyAccountComplaints') + ' ราย)';
+
+      document.getElementById('rep_bottleneck').innerText = document.getElementById('badge_primaryBottleneck').innerText.replace('ขั้นตอนคอขวดหลัก: ', '');
+      document.getElementById('rep_actualStaff').innerText = getVal('in_actualStaff');
+      document.getElementById('rep_staffGap').innerText = Math.max(0, getVal('in_targetStaff') - getVal('in_actualStaff'));
+      document.getElementById('rep_peak').innerText = `${getText('in_peakStart')} - ${getText('in_peakEnd')}`;
+
+      document.getElementById('rep_keyAcc').innerText = getVal('in_keyAccountComplaints');
+      document.getElementById('rep_backlog').innerText = Math.max(0, getVal('in_ordersReceived') - getVal('in_ordersCompleted'));
+      document.getElementById('rep_errors').innerText = getVal('in_actualErrors');
+      document.getElementById('rep_staffGap2').innerText = Math.max(0, getVal('in_targetStaff') - getVal('in_actualStaff'));
+      document.getElementById('rep_peakStart').innerText = getText('in_peakStart');
+      document.getElementById('rep_targetStaff').innerText = getVal('in_targetStaff');
+      document.getElementById('rep_peakRange').innerText = `${getText('in_peakStart')} - ${getText('in_peakEnd')}`;
+      document.getElementById('rep_peakRange2').innerText = `${getText('in_peakStart')} - ${getText('in_peakEnd')}`;
+      document.getElementById('rep_complaints2').innerText = getVal('in_actualComplaints');
+
+      // Populate Solutions
+      const checkedKeys = Object.keys(solutionDict).filter(k => document.getElementById(k) && document.getElementById(k).checked);
+      const repList = document.getElementById('rep_solutionsList');
+      if (checkedKeys.length === 0) {
+        repList.innerHTML = '<li>ไม่มีข้อผิดพลาดที่ระบุ</li>';
+      } else {
+        repList.innerHTML = checkedKeys.map(k => {
+          const item = solutionDict[k];
+          return `<li><strong>[${item.stage}]</strong> ${item.title} &rarr; <em>แนวทางแก้: ${item.solution}</em></li>`;
+        }).join('');
+      }
+
+      document.getElementById('reportModal').classList.remove('hidden');
+    }
+
+    function closeReportModal() {
+      document.getElementById('reportModal').classList.add('hidden');
+    }
+
+    window.onload = function() {
+      calculateAll();
+      setInterval(updateLiveClock, 1000);
+    };
+  </script>
+</body>
+</html>
